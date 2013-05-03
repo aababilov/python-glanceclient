@@ -15,25 +15,20 @@
 
 import warlock
 
-from glanceclient.common import http
+from glanceclient.openstack.common.apiclient import client
 from glanceclient.v2 import images
 from glanceclient.v2 import schemas
 
 
-class Client(object):
+class ImageClient(client.BaseClient):
     """Client for the OpenStack Images v2 API.
 
-    :param string endpoint: A user-supplied endpoint URL for the glance
-                            service.
-    :param string token: Token for authentication.
-    :param integer timeout: Allows customization of the timeout for client
-                            http requests. (optional)
     """
 
     def __init__(self, *args, **kwargs):
-        self.http_client = http.HTTPClient(*args, **kwargs)
-        self.schemas = schemas.Controller(self.http_client)
-        self.images = images.Controller(self.http_client,
+        super(ImageClient, self).__init__(*args, **kwargs)
+        self.schemas = schemas.Controller(self)
+        self.images = images.Controller(self,
                                         self._get_image_model())
 
     def _get_image_model(self):

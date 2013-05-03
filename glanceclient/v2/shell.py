@@ -14,7 +14,7 @@
 #    under the License.
 
 from glanceclient.common import utils
-from glanceclient import exc
+from glanceclient.openstack.common.apiclient import exceptions
 
 
 @utils.arg('--page-size', metavar='<SIZE>', default=None, type=int,
@@ -54,7 +54,7 @@ def do_explain(gc, args):
     """Describe a specific model."""
     try:
         schema = gc.schemas.get(args.model)
-    except exc.HTTPNotFound:
+    except exceptions.NotFound:
         utils.exit('Unable to find requested model \'%s\'' % args.model)
     else:
         formatters = {'Attribute': lambda m: m.name}

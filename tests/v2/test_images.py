@@ -18,6 +18,7 @@ import testtools
 
 import warlock
 
+from glanceclient.v2 import client
 from glanceclient.v2 import images
 from tests import utils
 
@@ -193,14 +194,19 @@ fixtures = {
 
 
 fake_schema = {'name': 'image', 'properties': {'id': {}, 'name': {}}}
-FakeModel = warlock.model_factory(fake_schema)
+
+
+class FakeImageClient(client.ImageClient):
+    def _get_image_model(self):
+        return warlock.model_factory(fake_schema)
 
 
 class TestController(testtools.TestCase):
     def setUp(self):
         super(TestController, self).setUp()
-        self.api = utils.FakeAPI(fixtures)
-        self.controller = images.Controller(self.api, FakeModel)
+        self.http_client = utils.FakeHttpClient(fixtures=fixtures)
+        self.gc = FakeImageClient(self.http_client)
+        self.controller = self.gc.images
 
     def test_list_images(self):
         #NOTE(bcwaldon): cast to list since the controller returns a generator
@@ -267,7 +273,7 @@ class TestController(testtools.TestCase):
                 'v2/images/87b634c1-f893-33c9-28a9-e5673c99239a',
                 {},
                 None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_data_without_checksum(self):
         body = self.controller.data('5cc4bebc-db27-11e1-a1eb-080027cbe205',
@@ -317,7 +323,7 @@ class TestController(testtools.TestCase):
             ('PATCH', '/v2/images/%s' % image_id, expect_hdrs, expect_body),
             ('GET', '/v2/images/%s' % image_id, {}, None),
         ]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(image.id, image_id)
         #NOTE(bcwaldon): due to limitations of our fake api framework, the name
         # will not actually change - yet in real life it will...

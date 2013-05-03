@@ -19,8 +19,11 @@ import json
 import os
 import urllib
 
-from glanceclient.common import base
+
 from glanceclient.common import utils
+from glanceclient.openstack.common.apiclient import base
+from glanceclient.openstack.common import strutils
+
 
 UPDATE_PARAMS = ('name', 'disk_format', 'container_format', 'min_disk',
                  'min_ram', 'owner', 'size', 'is_public', 'protected',
@@ -68,7 +71,7 @@ class ImageManager(base.Manager):
 
         for key in ['is_public', 'protected', 'deleted']:
             if key in meta:
-                meta[key] = utils.string_to_bool(meta[key])
+                meta[key] = strutils.bool_from_string(meta[key])
 
         return self._format_image_meta_for_user(meta)
 
@@ -100,10 +103,10 @@ class ImageManager(base.Manager):
         """
 
         image_id = base.getid(image)
-        resp, body = self.api.raw_request('HEAD', '/v1/images/%s'
-                                          % urllib.quote(image_id))
-        meta = self._image_meta_from_headers(dict(resp.getheaders()))
-        return Image(self, meta)
+        resp, body = self.api.head('/v1/images/%s'
+                                   % urllib.quote(image_id))
+        meta = self._image_meta_from_headers(dict(resp.headers))
+        return Image(self, meta, loaded=True)
 
     def data(self, image, do_checksum=True):
         """Get the raw data for a specific image.
@@ -113,9 +116,11 @@ class ImageManager(base.Manager):
         :rtype: iterable containing image data
         """
         image_id = base.getid(image)
-        resp, body = self.api.raw_request('GET', '/v1/images/%s'
-                                          % urllib.quote(image_id))
-        checksum = resp.getheader('x-image-meta-checksum', None)
+        resp, body = self.api.get('/v1/images/%s'
+                                  % urllib.quote(image_id),
+                                  stream=True)
+        checksum = resp.headers.get('x-image-meta-checksum')
+        body = resp.iter_content(chunk_size=utils.CHUNKSIZE)
         if do_checksum and checksum is not None:
             return utils.integrity_iter(body, checksum)
         else:
@@ -245,10 +250,10 @@ class ImageManager(base.Manager):
         hdrs = self._image_meta_to_headers(fields)
         if copy_from is not None:
             hdrs['x-glance-api-copy-from'] = copy_from
+        hdrs['Content-Type'] = 'application/octet-stream'
 
-        resp, body_iter = self.api.raw_request(
-            'POST', '/v1/images', headers=hdrs, body=image_data)
-        body = json.loads(''.join([c for c in body_iter]))
+        resp, body = self.api.post(
+            '/v1/images', headers=hdrs, body=image_data)
         return Image(self, self._format_image_meta_for_user(body['image']))
 
     def update(self, image, **kwargs):
@@ -282,9 +287,9 @@ class ImageManager(base.Manager):
         hdrs.update(self._image_meta_to_headers(fields))
         if copy_from is not None:
             hdrs['x-glance-api-copy-from'] = copy_from
+        hdrs['Content-Type'] = 'application/octet-stream'
 
         url = '/v1/images/%s' % base.getid(image)
-        resp, body_iter = self.api.raw_request(
-            'PUT', url, headers=hdrs, body=image_data)
-        body = json.loads(''.join([c for c in body_iter]))
+        resp, body = self.api.put(
+            url, headers=hdrs, body=image_data)
         return Image(self, self._format_image_meta_for_user(body['image']))

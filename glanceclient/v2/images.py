@@ -15,14 +15,16 @@
 
 import urllib
 
+
 from glanceclient.common import utils
+from glanceclient.openstack.common.apiclient import base
 
 DEFAULT_PAGE_SIZE = 20
 
 
-class Controller(object):
-    def __init__(self, http_client, model):
-        self.http_client = http_client
+class Controller(base.Manager):
+    def __init__(self, api, model):
+        super(Controller, self).__init__(api)
         self.model = model
 
     def list(self, **kwargs):
@@ -32,7 +34,7 @@ class Controller(object):
         :returns generator over list of Images
         """
         def paginate(url):
-            resp, body = self.http_client.json_request('GET', url)
+            resp, body = self.api.get(url)
             for image in body['images']:
                 yield image
             try:
@@ -64,7 +66,7 @@ class Controller(object):
 
     def get(self, image_id):
         url = '/v2/images/%s' % image_id
-        resp, body = self.http_client.json_request('GET', url)
+        resp, body = self.api.get(url)
         #NOTE(bcwaldon): remove 'self' for now until we have an elegant
         # way to pass it into the model constructor without conflict
         body.pop('self', None)
@@ -78,8 +80,8 @@ class Controller(object):
         :param do_checksum: Enable/disable checksum validation.
         """
         url = '/v2/images/%s/file' % image_id
-        resp, body = self.http_client.raw_request('GET', url)
-        checksum = resp.getheader('content-md5', None)
+        resp, body = self.api.get(url)
+        checksum = resp.headers.get('content-md5')
         if do_checksum and checksum is not None:
             return utils.integrity_iter(body, checksum)
         else:
@@ -87,7 +89,7 @@ class Controller(object):
 
     def delete(self, image_id):
         """Delete an image."""
-        self.http_client.json_request('DELETE', 'v2/images/%s' % image_id)
+        self.api.delete('v2/images/%s' % image_id)
 
     def update(self, image_id, **kwargs):
         """
@@ -102,9 +104,9 @@ class Controller(object):
 
         url = '/v2/images/%s' % image_id
         hdrs = {'Content-Type': 'application/openstack-images-v2.0-json-patch'}
-        self.http_client.raw_request('PATCH', url,
-                                     headers=hdrs,
-                                     body=image.patch)
+        self.api.patch(url,
+                       headers=hdrs,
+                       body=image.patch)
 
         #NOTE(bcwaldon): calling image.patch doesn't clear the changes, so
         # we need to fetch the image again to get a clean history. This is

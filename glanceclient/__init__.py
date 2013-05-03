@@ -18,7 +18,7 @@
 # its need to import local code before installing required dependencies
 try:
     import glanceclient.client
-    Client = glanceclient.client.Client
+    ImageClient = glanceclient.client.ImageClient
 except ImportError:
     import warnings
     warnings.warn("Could not import glanceclient.client", ImportWarning)

@@ -16,7 +16,7 @@
 from glanceclient.common import utils
 
 
-def Client(version, *args, **kwargs):
+def ImageClient(version, *args, **kwargs):
     module = utils.import_versioned_module(version, 'client')
-    client_class = getattr(module, 'Client')
+    client_class = getattr(module, 'ImageClient')
     return client_class(*args, **kwargs)

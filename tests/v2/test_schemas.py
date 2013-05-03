@@ -15,6 +15,7 @@
 
 import testtools
 
+from glanceclient.v2 import client
 from glanceclient.v2 import schemas
 from tests import utils
 
@@ -76,8 +77,9 @@ class TestSchema(testtools.TestCase):
 class TestController(testtools.TestCase):
     def setUp(self):
         super(TestController, self).setUp()
-        self.api = utils.FakeAPI(fixtures)
-        self.controller = schemas.Controller(self.api)
+        self.http_client = utils.FakeHttpClient(fixtures=fixtures)
+        self.gc = client.ImageClient(self.http_client)
+        self.controller = self.gc.schemas
 
     def test_get_schema(self):
         schema = self.controller.get('image')

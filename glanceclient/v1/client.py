@@ -13,23 +13,18 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from glanceclient.common import http
+from glanceclient.openstack.common.apiclient import client
 from glanceclient.v1 import images
 from glanceclient.v1 import image_members
 
 
-class Client(http.HTTPClient):
+class ImageClient(client.BaseClient):
     """Client for the OpenStack Images v1 API.
 
-    :param string endpoint: A user-supplied endpoint URL for the glance
-                            service.
-    :param string token: Token for authentication.
-    :param integer timeout: Allows customization of the timeout for client
-                            http requests. (optional)
     """
 
     def __init__(self, *args, **kwargs):
         """ Initialize a new client for the Images v1 API. """
-        super(Client, self).__init__(*args, **kwargs)
+        super(ImageClient, self).__init__(*args, **kwargs)
         self.images = images.ImageManager(self)
         self.image_members = image_members.ImageMemberManager(self)

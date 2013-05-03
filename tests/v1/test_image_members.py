@@ -15,6 +15,7 @@
 
 import testtools
 
+import glanceclient.v1.client as client
 import glanceclient.v1.images
 import glanceclient.v1.image_members
 from tests import utils
@@ -56,14 +57,15 @@ class ImageMemberManagerTest(testtools.TestCase):
 
     def setUp(self):
         super(ImageMemberManagerTest, self).setUp()
-        self.api = utils.FakeAPI(fixtures)
-        self.mgr = glanceclient.v1.image_members.ImageMemberManager(self.api)
-        self.image = glanceclient.v1.images.Image(self.api, {'id': '1'}, True)
+        self.http_client = utils.FakeHttpClient(fixtures=fixtures)
+        self.gc = client.ImageClient(self.http_client)
+        self.mgr = self.gc.image_members
+        self.image = glanceclient.v1.images.Image(self.gc.images, {'id': '1'}, True)
 
     def test_list_by_image(self):
         members = self.mgr.list(image=self.image)
         expect = [('GET', '/v1/images/1/members', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(len(members), 1)
         self.assertEqual(members[0].member_id, '1')
         self.assertEqual(members[0].image_id, '1')
@@ -71,15 +73,15 @@ class ImageMemberManagerTest(testtools.TestCase):
 
     def test_list_by_member(self):
         resource_class = glanceclient.v1.image_members.ImageMember
-        member = resource_class(self.api, {'member_id': '1'}, True)
+        member = resource_class(self.gc.image_members, {'member_id': '1'}, True)
         self.mgr.list(member=member)
         expect = [('GET', '/v1/shared-images/1', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_get(self):
         member = self.mgr.get(self.image, '1')
         expect = [('GET', '/v1/images/1/members/1', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(member.member_id, '1')
         self.assertEqual(member.image_id, '1')
         self.assertEqual(member.can_share, False)
@@ -87,13 +89,13 @@ class ImageMemberManagerTest(testtools.TestCase):
     def test_delete(self):
         self.mgr.delete('1', '1')
         expect = [('DELETE', '/v1/images/1/members/1', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_create(self):
         self.mgr.create(self.image, '1', can_share=True)
         expect_body = {'member': {'can_share': True}}
         expect = [('PUT', '/v1/images/1/members/1', {}, expect_body)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_replace(self):
         body = [
@@ -102,7 +104,7 @@ class ImageMemberManagerTest(testtools.TestCase):
         ]
         self.mgr.replace(self.image, body)
         expect = [('PUT', '/v1/images/1/members', {}, {'memberships': body})]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_replace_objects(self):
         body = [
@@ -119,4 +121,4 @@ class ImageMemberManagerTest(testtools.TestCase):
             ],
         }
         expect = [('PUT', '/v1/images/1/members', {}, expect_body)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)

@@ -22,11 +22,11 @@ import logging
 import re
 import sys
 
-from keystoneclient.v2_0 import client as ksclient
-
 import glanceclient
-from glanceclient import exc
-from glanceclient.common import utils
+from glanceclient.openstack.common.apiclient import client
+from glanceclient.openstack.common.apiclient import exceptions
+from glanceclient.openstack.common.apiclient import utils
+import glanceclient.common.utils as glance_utils
 
 
 class OpenStackImagesShell(object):
@@ -261,7 +261,7 @@ class OpenStackImagesShell(object):
 
         self.subcommands = {}
         subparsers = parser.add_subparsers(metavar='<subcommand>')
-        submodule = utils.import_versioned_module(version, 'shell')
+        submodule = glance_utils.import_versioned_module(version, 'shell')
         self._find_actions(subparsers, submodule)
         self._find_actions(subparsers, self)
 
@@ -380,30 +380,32 @@ class OpenStackImagesShell(object):
         LOG.setLevel(logging.DEBUG if args.debug else logging.INFO)
 
         image_url = self._get_image_url(args)
-        auth_reqd = (utils.is_authentication_required(args.func) and
+        auth_reqd = (utils.isunauthenticated(args.func) and
                      not (args.os_auth_token and image_url))
 
         if not auth_reqd:
-            endpoint = image_url
-            token = args.os_auth_token
+            kwargs = {
+                'endpoint': image_url,
+                'token': args.os_auth_token,
+            }
         else:
             if not args.os_username:
-                raise exc.CommandError("You must provide a username via"
+                raise exceptions.CommandError("You must provide a username via"
                                        " either --os-username or "
                                        "env[OS_USERNAME]")
 
             if not args.os_password:
-                raise exc.CommandError("You must provide a password via"
+                raise exceptions.CommandError("You must provide a password via"
                                        " either --os-password or "
                                        "env[OS_PASSWORD]")
 
             if not (args.os_tenant_id or args.os_tenant_name):
-                raise exc.CommandError("You must provide a tenant_id via"
+                raise exceptions.CommandError("You must provide a tenant_id via"
                                        " either --os-tenant-id or "
                                        "via env[OS_TENANT_ID]")
 
             if not args.os_auth_url:
-                raise exc.CommandError("You must provide an auth url via"
+                raise exceptions.CommandError("You must provide an auth url via"
                                        " either --os-auth-url or "
                                        "via env[OS_AUTH_URL]")
             kwargs = {
@@ -412,34 +414,23 @@ class OpenStackImagesShell(object):
                 'tenant_id': args.os_tenant_id,
                 'tenant_name': args.os_tenant_name,
                 'auth_url': args.os_auth_url,
-                'service_type': args.os_service_type,
-                'endpoint_type': args.os_endpoint_type,
                 'cacert': args.os_cacert,
                 'insecure': args.insecure,
                 'region_name': args.os_region_name,
             }
-            _ksclient = self._get_ksclient(**kwargs)
-            token = args.os_auth_token or _ksclient.auth_token
+        kwargs['timeout'] = args.timeout
+        http_client = client.HttpClient(**kwargs)
 
-            endpoint = args.os_image_url or \
-                self._get_endpoint(_ksclient, **kwargs)
+        #'cacert': args.os_cacert,
+         #   'cert_file': args.cert_file,
+          #  'key_file': args.key_file,
 
-        kwargs = {
-            'token': token,
-            'insecure': args.insecure,
-            'timeout': args.timeout,
-            'cacert': args.os_cacert,
-            'cert_file': args.cert_file,
-            'key_file': args.key_file,
-            'ssl_compression': args.ssl_compression
-        }
-
-        client = glanceclient.Client(api_version, endpoint, **kwargs)
+        image_client = glanceclient.ImageClient(api_version, http_client)
 
         try:
-            args.func(client, args)
-        except exc.Unauthorized:
-            raise exc.CommandError("Invalid OpenStack Identity credentials.")
+            args.func(image_client, args)
+        except exceptions.Unauthorized:
+            raise exceptions.CommandError("Invalid OpenStack Identity credentials.")
 
     @utils.arg('command', metavar='<subcommand>', nargs='?',
                help='Display help for <subcommand>')
@@ -451,7 +442,7 @@ class OpenStackImagesShell(object):
             if args.command in self.subcommands:
                 self.subcommands[args.command].print_help()
             else:
-                raise exc.CommandError("'%s' is not a valid subcommand" %
+                raise exceptions.CommandError("'%s' is not a valid subcommand" %
                                        args.command)
         else:
             self.parser.print_help()
@@ -466,7 +457,8 @@ class HelpFormatter(argparse.HelpFormatter):
 
 def main():
     try:
-        OpenStackImagesShell().main(map(utils.ensure_unicode, sys.argv[1:]))
+        OpenStackImagesShell().main(
+            map(glance_utils.ensure_unicode, sys.argv[1:]))
     except KeyboardInterrupt:
         print >> sys.stderr, '... terminating glance client'
         sys.exit(1)

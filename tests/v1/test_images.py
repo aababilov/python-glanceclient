@@ -33,7 +33,7 @@ fixtures = {
             {
                 'location': '/v1/images/1',
             },
-            json.dumps(
+            (
                 {'image': {
                     'id': '1',
                     'name': 'image-1',
@@ -47,7 +47,7 @@ fixtures = {
                     'is_public': False,
                     'protected': False,
                     'deleted': False,
-                }},
+                }}
             ),
         ),
     },
@@ -195,7 +195,7 @@ fixtures = {
         ),
         'PUT': (
             {},
-            json.dumps(
+            (
                 {'image': {
                     'id': '1',
                     'name': 'image-2',
@@ -208,7 +208,7 @@ fixtures = {
                     'properties': {'a': 'b', 'c': 'd'},
                     'is_public': False,
                     'protected': False,
-                }},
+                }}
             ),
         ),
         'DELETE': ({}, None),
@@ -248,8 +248,9 @@ class ImageManagerTest(testtools.TestCase):
 
     def setUp(self):
         super(ImageManagerTest, self).setUp()
-        self.api = utils.FakeAPI(fixtures)
-        self.mgr = glanceclient.v1.images.ImageManager(self.api)
+        self.http_client = utils.FakeHttpClient(fixtures=fixtures)
+        self.gc = client.ImageClient(self.http_client)
+        self.mgr = self.gc.images
 
     def test_paginated_list(self):
         images = list(self.mgr.list(page_size=2))
@@ -257,7 +258,7 @@ class ImageManagerTest(testtools.TestCase):
             ('GET', '/v1/images/detail?limit=2', {}, None),
             ('GET', '/v1/images/detail?marker=b&limit=2', {}, None),
         ]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(len(images), 3)
         self.assertEqual(images[0].id, 'a')
         self.assertEqual(images[1].id, 'b')
@@ -267,45 +268,45 @@ class ImageManagerTest(testtools.TestCase):
         results = list(self.mgr.list(page_size=2, limit=1))
         expect = [('GET', '/v1/images/detail?limit=2', {}, None)]
         self.assertEqual(1, len(results))
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_list_with_limit_greater_than_page_size(self):
         list(self.mgr.list(page_size=20, limit=30))
         expect = [('GET', '/v1/images/detail?limit=20', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_list_with_marker(self):
         list(self.mgr.list(marker='a'))
         expect = [('GET', '/v1/images/detail?marker=a&limit=20', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_list_with_filter(self):
         list(self.mgr.list(filters={'name': "foo"}))
         expect = [('GET', '/v1/images/detail?limit=20&name=foo', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_list_with_property_filters(self):
         list(self.mgr.list(filters={'properties': {'ping': 'pong'}}))
         url = '/v1/images/detail?property-ping=pong&limit=20'
         expect = [('GET', url, {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_list_with_sort_dir(self):
         list(self.mgr.list(sort_dir='desc'))
         url = '/v1/images/detail?sort_dir=desc&limit=20'
         expect = [('GET', url, {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_list_with_sort_key(self):
         list(self.mgr.list(sort_key='name'))
         url = '/v1/images/detail?sort_key=name&limit=20'
         expect = [('GET', url, {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_get(self):
         image = self.mgr.get('1')
         expect = [('HEAD', '/v1/images/1', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(image.id, '1')
         self.assertEqual(image.name, 'image-1')
         self.assertEqual(image.is_public, False)
@@ -315,23 +316,23 @@ class ImageManagerTest(testtools.TestCase):
     def test_data(self):
         data = ''.join([b for b in self.mgr.data('1', do_checksum=False)])
         expect = [('GET', '/v1/images/1', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(data, 'XXX')
 
         expect += [('GET', '/v1/images/1', {}, None)]
         data = ''.join([b for b in self.mgr.data('1')])
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(data, 'XXX')
 
     def test_data_with_wrong_checksum(self):
         data = ''.join([b for b in self.mgr.data('2', do_checksum=False)])
         expect = [('GET', '/v1/images/2', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(data, 'YYY')
 
         expect += [('GET', '/v1/images/2', {}, None)]
         data = self.mgr.data('2')
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         try:
             data = ''.join([b for b in data])
             self.fail('data did not raise an error.')
@@ -343,18 +344,18 @@ class ImageManagerTest(testtools.TestCase):
     def test_data_with_checksum(self):
         data = ''.join([b for b in self.mgr.data('3', do_checksum=False)])
         expect = [('GET', '/v1/images/3', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(data, 'ZZZ')
 
         expect += [('GET', '/v1/images/3', {}, None)]
         data = ''.join([b for b in self.mgr.data('3')])
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(data, 'ZZZ')
 
     def test_delete(self):
         self.mgr.delete('1')
         expect = [('DELETE', '/v1/images/1', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_create_without_data(self):
         params = {
@@ -371,6 +372,7 @@ class ImageManagerTest(testtools.TestCase):
         }
         image = self.mgr.create(**params)
         expect_headers = {
+            'Content-Type': 'application/octet-stream',
             'x-image-meta-id': '1',
             'x-image-meta-name': 'image-1',
             'x-image-meta-container_format': 'ovf',
@@ -384,7 +386,7 @@ class ImageManagerTest(testtools.TestCase):
             'x-image-meta-property-c': 'd',
         }
         expect = [('POST', '/v1/images', expect_headers, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(image.id, '1')
         self.assertEqual(image.name, 'image-1')
         self.assertEqual(image.container_format, 'ovf')
@@ -401,9 +403,10 @@ class ImageManagerTest(testtools.TestCase):
     def test_create_with_data(self):
         image_data = StringIO.StringIO('XXX')
         self.mgr.create(data=image_data)
-        expect_headers = {'x-image-meta-size': '3'}
+        expect_headers = {'Content-Type': 'application/octet-stream',
+                          'x-image-meta-size': u'3'}
         expect = [('POST', '/v1/images', expect_headers, image_data)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_update(self):
         fields = {
@@ -420,6 +423,7 @@ class ImageManagerTest(testtools.TestCase):
         }
         image = self.mgr.update('1', **fields)
         expect_hdrs = {
+            'Content-Type': 'application/octet-stream',
             'x-image-meta-name': 'image-2',
             'x-image-meta-container_format': 'ovf',
             'x-image-meta-disk_format': 'vhd',
@@ -433,7 +437,7 @@ class ImageManagerTest(testtools.TestCase):
             'x-image-meta-deleted': 'False',
         }
         expect = [('PUT', '/v1/images/1', expect_hdrs, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(image.id, '1')
         self.assertEqual(image.name, 'image-2')
         self.assertEqual(image.size, 1024)
@@ -443,22 +447,25 @@ class ImageManagerTest(testtools.TestCase):
     def test_update_with_data(self):
         image_data = StringIO.StringIO('XXX')
         self.mgr.update('1', data=image_data)
-        expect_headers = {'x-image-meta-size': '3'}
+        expect_headers = {'Content-Type': 'application/octet-stream',
+                          'x-image-meta-size': '3'}
         expect = [('PUT', '/v1/images/1', expect_headers, image_data)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_update_with_purge_props(self):
         self.mgr.update('1', purge_props=True)
-        expect_headers = {'x-glance-registry-purge-props': 'true'}
+        expect_headers = {'Content-Type': 'application/octet-stream',
+                          'x-glance-registry-purge-props': 'true'}
         expect = [('PUT', '/v1/images/1', expect_headers, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
 
 class ImageTest(testtools.TestCase):
     def setUp(self):
         super(ImageTest, self).setUp()
-        self.api = utils.FakeAPI(fixtures)
-        self.mgr = glanceclient.v1.images.ImageManager(self.api)
+        self.http_client = utils.FakeHttpClient(fixtures=fixtures)
+        self.gc = client.ImageClient(self.http_client)
+        self.mgr = self.gc.images
 
     def test_delete(self):
         image = self.mgr.get('1')
@@ -467,16 +474,18 @@ class ImageTest(testtools.TestCase):
             ('HEAD', '/v1/images/1', {}, None),
             ('DELETE', '/v1/images/1', {}, None),
         ]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_update(self):
         image = self.mgr.get('1')
         image.update(name='image-5')
         expect = [
             ('HEAD', '/v1/images/1', {}, None),
-            ('PUT', '/v1/images/1', {'x-image-meta-name': 'image-5'}, None),
+            ('PUT', '/v1/images/1',
+             {'Content-Type': 'application/octet-stream',
+              'x-image-meta-name': 'image-5'}, None),
         ]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
 
     def test_data(self):
         image = self.mgr.get('1')
@@ -485,12 +494,12 @@ class ImageTest(testtools.TestCase):
             ('HEAD', '/v1/images/1', {}, None),
             ('GET', '/v1/images/1', {}, None),
         ]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(data, 'XXX')
 
         data = ''.join([b for b in image.data(do_checksum=False)])
         expect += [('GET', '/v1/images/1', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(data, 'XXX')
 
     def test_data_with_wrong_checksum(self):
@@ -500,12 +509,12 @@ class ImageTest(testtools.TestCase):
             ('HEAD', '/v1/images/2', {}, None),
             ('GET', '/v1/images/2', {}, None),
         ]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(data, 'YYY')
 
         data = image.data()
         expect += [('GET', '/v1/images/2', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         try:
             data = ''.join([b for b in image.data()])
             self.fail('data did not raise an error.')
@@ -521,16 +530,16 @@ class ImageTest(testtools.TestCase):
             ('HEAD', '/v1/images/3', {}, None),
             ('GET', '/v1/images/3', {}, None),
         ]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(data, 'ZZZ')
 
         data = ''.join([b for b in image.data()])
         expect += [('GET', '/v1/images/3', {}, None)]
-        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(self.http_client.callstack, expect)
         self.assertEqual(data, 'ZZZ')
 
 
-class ParameterFakeAPI(utils.FakeAPI):
+class ParameterFakeHttpClient(utils.FakeHttpClient):
     image_list = {'images': [
         {
             'id': 'a',
@@ -544,9 +553,9 @@ class ParameterFakeAPI(utils.FakeAPI):
         },
     ]}
 
-    def json_request(self, method, url, **kwargs):
+    def cs_request(self, client, method, url, **kwargs):
         self.url = url
-        return utils.FakeResponse({}), ParameterFakeAPI.image_list
+        return utils.TestResponse({}), ParameterFakeHttpClient.image_list
 
 
 class FakeArg(object):
@@ -565,13 +574,12 @@ class UrlParameterTest(testtools.TestCase):
 
     def setUp(self):
         super(UrlParameterTest, self).setUp()
-        self.api = ParameterFakeAPI({})
-        self.gc = client.Client("http://fakeaddress.com")
-        self.gc.images = glanceclient.v1.images.ImageManager(self.api)
+        self.http_client = ParameterFakeHttpClient()
+        self.gc = client.ImageClient(self.http_client)
 
     def test_is_public_list(self):
         shell.do_image_list(self.gc, FakeArg({"is_public": "True"}))
-        parts = urlparse.urlparse(self.api.url)
+        parts = urlparse.urlparse(self.http_client.url)
         qs_dict = urlparse.parse_qs(parts.query)
         self.assertTrue('is_public' in qs_dict)
         self.assertTrue(qs_dict['is_public'][0].lower() == "true")
